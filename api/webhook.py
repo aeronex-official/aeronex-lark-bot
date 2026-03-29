@@ -18,11 +18,9 @@ def get_lark_token():
     return resp.json().get('tenant_access_token', '')
 
 def is_ean(keyword):
-    """判断是否为EAN码（纯数字，8-14位）"""
     return bool(re.match(r'^\d{8,14}$', keyword.strip()))
 
 def fetch_all_inventory():
-    """获取全部库存数据"""
     all_rows = []
     page = 1
     while True:
@@ -42,7 +40,6 @@ def fetch_all_inventory():
     return all_rows
 
 def merge_products(rows):
-    """合并同EAN的迪拜和沙特库存"""
     products = {}
     for row in rows:
         ean = str(row.get('ean', '')).strip()
@@ -66,13 +63,11 @@ def merge_products(rows):
     return list(products.values())
 
 def search_by_ean(keyword):
-    """精确EAN查询"""
     all_rows = fetch_all_inventory()
     matched = [r for r in all_rows if str(r.get('ean', '')).strip() == keyword]
     return merge_products(matched)
 
 def search_by_model(keyword):
-    """型号模糊查询：只返回包含关键词的结果"""
     resp = requests.get(
         f'{WEB_API_BASE_URL}/tables/inventory',
         params={'search': keyword, 'limit': 500},
@@ -81,41 +76,34 @@ def search_by_model(keyword):
     if resp.status_code != 200:
         return []
     rows = resp.json().get('data', [])
-
-    # 严格过滤：只保留model字段中包含关键词的结果（不区分大小写）
     kw = keyword.lower()
     filtered_rows = [r for r in rows if kw in r.get('model', '').lower()]
-
-    # 合并同EAN产品
     products = merge_products(filtered_rows)
 
-    # 按匹配度排序
     def sort_key(p):
         model = p['model'].lower()
         if model == kw:
-            return 0  # 完全匹配
+            return 0
         elif model.startswith(kw):
-            return 1  # 开头匹配
+            return 1
         elif kw in model:
-            return 2  # 包含匹配
+            return 2
         else:
             return 3
     products.sort(key=sort_key)
     return products
 
 def format_qty(qty):
-    """格式化库存数量显示（包括负数）"""
     if qty is None:
         return "—"
     if qty > 0:
         return f"✅ {qty} 件"
     elif qty < 0:
-        return f"⚠️ {qty} 件"  # 负数显示
+        return f"⚠️ {qty} 件"
     else:
         return "❌ 无库存"
 
 def format_product_detail(p):
-    """格式化单个产品详情"""
     lines = [
         "━" * 28,
         f"📦 {p['model']}",
@@ -127,7 +115,6 @@ def format_product_detail(p):
     return "\n".join(lines)
 
 def format_search_list(keyword, products):
-    """格式化搜索列表（只显示型号，不显示库存）"""
     total = len(products)
     top10 = products[:10]
     lines = [f"🔍 「{keyword}」找到 {total} 个相关产品\n"]
@@ -137,21 +124,55 @@ def format_search_list(keyword, products):
     lines.append(f"\n💡 输入数字 1-{len(top10)} 查看详情")
     return "\n".join(lines)
 
-def send_reply(open_id, text, token):
-    requests.post(
-        f'{LARK_BASE_URL}/open-apis/im/v1/messages',
-        headers={'Authorization': f'Bearer {token}'},
-        params={'receive_id_type': 'open_id'},
-        json={
-            'receive_id': open_id,
-            'msg_type': 'text',
-            'content': json.dumps({'text': text})
-        },
-        timeout=10
-    )
+def send_reply(open_id, text, token, reply_in_group=False,
+               message_id=None, chat_id=None):
+    """
+    私聊：向 open_id 发送消息
+    群组：回复原消息（带引用），发送到 chat_id
+    """
+    if reply_in_group and chat_id:
+        # 群组：发送到群，@发消息的人
+        requests.post(
+            f'{LARK_BASE_URL}/open-apis/im/v1/messages',
+            headers={'Authorization': f'Bearer {token}'},
+            params={'receive_id_type': 'chat_id'},
+            json={
+                'receive_id': chat_id,
+                'msg_type': 'text',
+                'content': json.dumps({'text': text})
+            },
+            timeout=10
+        )
+    else:
+        # 私聊：直接发给用户
+        requests.post(
+            f'{LARK_BASE_URL}/open-apis/im/v1/messages',
+            headers={'Authorization': f'Bearer {token}'},
+            params={'receive_id_type': 'open_id'},
+            json={
+                'receive_id': open_id,
+                'msg_type': 'text',
+                'content': json.dumps({'text': text})
+            },
+            timeout=10
+        )
+
+def extract_keyword_from_group_msg(content_obj, mentions):
+    """
+    群组消息中去除 @机器人 的mention标签，提取纯文本关键词
+    content格式: {"text": "@_user_1 Matrice 400", "mentions": [...]}
+    """
+    text = content_obj.get('text', '')
+    # 去除所有 @mention 标签（格式为 @_user_X）
+    text = re.sub(r'@_user_\d+', '', text)
+    # 去除多余空格
+    text = text.strip()
+    return text
 
 def handle_message(open_id, keyword):
     keyword = keyword.strip()
+    if not keyword:
+        return None
 
     # 判断是否为选择编号
     if re.match(r'^\d{1,2}$', keyword):
@@ -185,12 +206,10 @@ def handle_message(open_id, keyword):
             "• 输入型号关键词（如：Zenmuse X7、Matrice 400）"
         )
 
-    # 只有1个结果直接显示详情
     if len(products) == 1:
         user_sessions[open_id] = products
         return format_product_detail(products[0])
 
-    # 多个结果显示编号列表
     user_sessions[open_id] = products[:10]
     return format_search_list(keyword, products)
 
@@ -202,6 +221,7 @@ class handler(BaseHTTPRequestHandler):
             length = int(self.headers.get('Content-Length', 0))
             body = json.loads(self.rfile.read(length))
 
+            # URL verification
             if body.get('type') == 'url_verification':
                 self._respond(200, {'challenge': body.get('challenge')})
                 return
@@ -210,13 +230,32 @@ class handler(BaseHTTPRequestHandler):
             msg = event.get('message', {})
             sender = event.get('sender', {})
 
-            if msg.get('chat_type') != 'p2p' or msg.get('message_type') != 'text':
+            chat_type = msg.get('chat_type', '')
+            msg_type = msg.get('message_type', '')
+
+            # 只处理私聊和群组的文本消息
+            if chat_type not in ('p2p', 'group') or msg_type != 'text':
                 self._respond(200, {'code': 0})
                 return
 
-            content = json.loads(msg.get('content', '{}'))
-            keyword = content.get('text', '').strip()
+            content_str = msg.get('content', '{}')
+            content_obj = json.loads(content_str)
+            mentions = event.get('message', {}).get('mentions', [])
             open_id = sender.get('sender_id', {}).get('open_id', '')
+            chat_id = msg.get('chat_id', '')
+            is_group = (chat_type == 'group')
+
+            if is_group:
+                # 群组消息：必须 @机器人 才响应
+                text_raw = content_obj.get('text', '')
+                # 检查是否包含 @mention
+                if '@_user_' not in text_raw:
+                    self._respond(200, {'code': 0})
+                    return
+                keyword = extract_keyword_from_group_msg(content_obj, mentions)
+            else:
+                # 私聊：直接取文本
+                keyword = content_obj.get('text', '').strip()
 
             if not keyword or not open_id:
                 self._respond(200, {'code': 0})
@@ -224,22 +263,39 @@ class handler(BaseHTTPRequestHandler):
 
             token = get_lark_token()
             reply = handle_message(open_id, keyword)
-            send_reply(open_id, reply, token)
+
+            if reply:
+                send_reply(
+                    open_id=open_id,
+                    text=reply,
+                    token=token,
+                    reply_in_group=is_group,
+                    chat_id=chat_id
+                )
 
         except Exception as e:
             try:
                 token = get_lark_token()
-                open_id = body.get('event', {}).get('sender', {}).get(
-                    'sender_id', {}).get('open_id', '')
+                event = body.get('event', {})
+                msg = event.get('message', {})
+                open_id = event.get('sender', {}).get('sender_id', {}).get('open_id', '')
+                chat_type = msg.get('chat_type', '')
+                chat_id = msg.get('chat_id', '')
                 if open_id:
-                    send_reply(open_id, "⚠️ 查询出错，请稍后重试", token)
+                    send_reply(
+                        open_id=open_id,
+                        text="⚠️ 查询出错，请稍后重试",
+                        token=token,
+                        reply_in_group=(chat_type == 'group'),
+                        chat_id=chat_id
+                    )
             except Exception:
                 pass
 
         self._respond(200, {'code': 0})
 
     def do_GET(self):
-        self._respond(200, {'status': 'AERONEX Lark Bot is running', 'version': '1.3.0'})
+        self._respond(200, {'status': 'AERONEX Lark Bot is running', 'version': '1.4.0'})
 
     def _respond(self, status, data):
         self.send_response(status)
