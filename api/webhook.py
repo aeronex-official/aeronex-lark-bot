@@ -1,5 +1,5 @@
 from http.server import BaseHTTPRequestHandler
-import json, requests, os
+import json, requests, os, re
 
 WEB_API_BASE_URL = os.environ.get('WEB_API_BASE_URL', '').rstrip('/')
 LARK_APP_ID = os.environ.get('LARK_APP_ID', '')
@@ -14,17 +14,62 @@ def get_lark_token():
     )
     return resp.json().get('tenant_access_token', '')
 
+def is_ean(keyword):
+    """判断是否为EAN码（纯数字，8-14位）"""
+    return bool(re.match(r'^\d{8,14}$', keyword.strip()))
+
 def search_inventory(keyword):
-    resp = requests.get(
-        f'{WEB_API_BASE_URL}/tables/inventory',
-        params={'search': keyword, 'limit': 100},
-        timeout=10
-    )
-    if resp.status_code != 200:
-        return []
-    rows = resp.json().get('data', [])
+    keyword = keyword.strip()
+    all_rows = []
+
+    if is_ean(keyword):
+        # EAN精确查询：获取所有数据后精确匹配
+        page = 1
+        while True:
+            resp = requests.get(
+                f'{WEB_API_BASE_URL}/tables/inventory',
+                params={'page': page, 'limit': 500},
+                timeout=15
+            )
+            if resp.status_code != 200:
+                break
+            data = resp.json()
+            rows = data.get('data', [])
+            all_rows.extend(rows)
+            if len(rows) < 500:
+                break
+            page += 1
+
+        # 精确匹配EAN
+        matched = [r for r in all_rows if str(r.get('ean', '')).strip() == keyword]
+    else:
+        # 型号关键词搜索
+        resp = requests.get(
+            f'{WEB_API_BASE_URL}/tables/inventory',
+            params={'search': keyword, 'limit': 100},
+            timeout=15
+        )
+        if resp.status_code != 200:
+            return []
+        matched = resp.json().get('data', [])
+
+        # 按匹配度排序：完全匹配 > 开头匹配 > 包含匹配
+        keyword_lower = keyword.lower()
+        def sort_key(r):
+            model = r.get('model', '').lower()
+            if model == keyword_lower:
+                return 0  # 完全匹配
+            elif model.startswith(keyword_lower):
+                return 1  # 开头匹配
+            elif keyword_lower in model:
+                return 2  # 包含匹配
+            else:
+                return 3  # 其他
+        matched.sort(key=sort_key)
+
+    # 合并同一EAN的两个仓库数据
     products = {}
-    for row in rows:
+    for row in matched:
         ean = row.get('ean', '')
         if not ean:
             continue
@@ -41,27 +86,38 @@ def search_inventory(keyword):
             products[ean]['dubai_qty'] = qty
         elif 'Saudi' in warehouse:
             products[ean]['saudi_qty'] = qty
+
     return list(products.values())
 
 def format_reply(keyword, products):
     if not products:
+        if is_ean(keyword):
+            return (
+                f"❌ 未找到 EAN「{keyword}」\n\n"
+                "请确认EAN码是否正确，或尝试输入型号关键词查询"
+            )
         return (
             f"❌ 未找到与「{keyword}」相关的产品\n\n"
             "请尝试：\n"
             "• 输入完整 EAN 码（如：6937224106420）\n"
-            "• 输入型号关键词（如：Zenmuse、Matrice）"
+            "• 输入型号关键词（如：Zenmuse X7、Matrice 400）"
         )
+
     if len(products) > 5:
-        return (
-            f"⚠️ 找到 {len(products)} 个相关产品，结果过多\n\n"
-            "请输入更精确的关键词缩小范围"
-        )
+        # 显示产品名称列表供用户选择
+        lines = [f"⚠️ 找到 {len(products)} 个相关产品，请输入更精确的关键词\n\n📋 前10个结果："]
+        for p in products[:10]:
+            dubai = f"🇦🇪{p['dubai_qty']}件" if p['dubai_qty'] else "🇦🇪—"
+            saudi = f"🇸🇦{p['saudi_qty']}件" if p['saudi_qty'] else "🇸🇦—"
+            lines.append(f"• {p['model']} ({dubai} {saudi})")
+        return "\n".join(lines)
+
     lines = [f"🔍 「{keyword}」查询结果：\n", "━" * 28]
     for p in products:
         dubai_qty = p['dubai_qty']
         saudi_qty = p['saudi_qty']
-        dubai_str = "—" if dubai_qty is None else (f"✅ {dubai_qty} 件" if dubai_qty > 0 else "❌ Out of Stock")
-        saudi_str = "—" if saudi_qty is None else (f"✅ {saudi_qty} 件" if saudi_qty > 0 else "❌ Out of Stock")
+        dubai_str = "—" if dubai_qty is None else (f"✅ {dubai_qty} 件" if dubai_qty > 0 else "❌ 无库存")
+        saudi_str = "—" if saudi_qty is None else (f"✅ {saudi_qty} 件" if saudi_qty > 0 else "❌ 无库存")
         lines.extend([
             f"📦 {p['model']}",
             f"EAN: {p['ean']}",
@@ -128,7 +184,7 @@ class handler(BaseHTTPRequestHandler):
         self._respond(200, {'code': 0})
 
     def do_GET(self):
-        self._respond(200, {'status': 'AERONEX Lark Bot is running', 'version': '1.0.0'})
+        self._respond(200, {'status': 'AERONEX Lark Bot is running', 'version': '1.1.0'})
 
     def _respond(self, status, data):
         self.send_response(status)
@@ -138,3 +194,4 @@ class handler(BaseHTTPRequestHandler):
 
     def log_message(self, *args):
         pass
+
