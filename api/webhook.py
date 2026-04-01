@@ -1,58 +1,13 @@
 from http.server import BaseHTTPRequestHandler
-import json, requests, os, re, threading
+import json, requests, os, re
 
 WEB_API_BASE_URL = os.environ.get('WEB_API_BASE_URL', '').rstrip('/')
 LARK_APP_ID = os.environ.get('LARK_APP_ID', '')
 LARK_APP_SECRET = os.environ.get('LARK_APP_SECRET', '')
 LARK_BASE_URL = 'https://open.larksuite.com'
 
-# ✅ 修复3：user_sessions 改为带过期时间的结构，并加锁保护
-# 格式: {open_id: {'products': [...], 'timestamp': time.time()}}
-import time
-sessions_lock = threading.Lock()
+# 临时存储用户查询上下文 {open_id: [product_list]}
 user_sessions = {}
-SESSION_TTL = 300  # session 保留 5 分钟
-
-# ✅ 修复2：event_id 去重缓存，防止 Lark 重试导致重复处理
-processed_events_lock = threading.Lock()
-processed_events = {}
-EVENT_TTL = 60  # event_id 缓存 60 秒
-
-def is_event_processed(event_id):
-    """检查 event_id 是否已处理过，已处理返回 True"""
-    if not event_id:
-        return False
-    now = time.time()
-    with processed_events_lock:
-        # 清理过期的 event_id
-        expired = [k for k, v in processed_events.items() if now - v > EVENT_TTL]
-        for k in expired:
-            del processed_events[k]
-        # 检查是否已处理
-        if event_id in processed_events:
-            return True
-        # 标记为已处理
-        processed_events[event_id] = now
-        return False
-
-def get_session(open_id):
-    """获取用户 session，过期自动清除"""
-    now = time.time()
-    with sessions_lock:
-        session = user_sessions.get(open_id)
-        if session and now - session['timestamp'] < SESSION_TTL:
-            return session['products']
-        elif session:
-            del user_sessions[open_id]
-        return []
-
-def set_session(open_id, products):
-    """设置用户 session"""
-    with sessions_lock:
-        user_sessions[open_id] = {
-            'products': products,
-            'timestamp': time.time()
-        }
 
 def get_lark_token():
     resp = requests.post(
@@ -171,7 +126,12 @@ def format_search_list(keyword, products):
 
 def send_reply(open_id, text, token, reply_in_group=False,
                message_id=None, chat_id=None):
+    """
+    私聊：向 open_id 发送消息
+    群组：回复原消息（带引用），发送到 chat_id
+    """
     if reply_in_group and chat_id:
+        # 群组：发送到群，@发消息的人
         requests.post(
             f'{LARK_BASE_URL}/open-apis/im/v1/messages',
             headers={'Authorization': f'Bearer {token}'},
@@ -184,6 +144,7 @@ def send_reply(open_id, text, token, reply_in_group=False,
             timeout=10
         )
     else:
+        # 私聊：直接发给用户
         requests.post(
             f'{LARK_BASE_URL}/open-apis/im/v1/messages',
             headers={'Authorization': f'Bearer {token}'},
@@ -197,8 +158,14 @@ def send_reply(open_id, text, token, reply_in_group=False,
         )
 
 def extract_keyword_from_group_msg(content_obj, mentions):
+    """
+    群组消息中去除 @机器人 的mention标签，提取纯文本关键词
+    content格式: {"text": "@_user_1 Matrice 400", "mentions": [...]}
+    """
     text = content_obj.get('text', '')
+    # 去除所有 @mention 标签（格式为 @_user_X）
     text = re.sub(r'@_user_\d+', '', text)
+    # 去除多余空格
     text = text.strip()
     return text
 
@@ -210,8 +177,7 @@ def handle_message(open_id, keyword):
     # 判断是否为选择编号
     if re.match(r'^\d{1,2}$', keyword):
         num = int(keyword)
-        # ✅ 修复3：使用新的 get_session 方法
-        session = get_session(open_id)
+        session = user_sessions.get(open_id, [])
         if session and 1 <= num <= len(session):
             return format_product_detail(session[num - 1])
         elif session:
@@ -227,8 +193,7 @@ def handle_message(open_id, keyword):
                 f"❌ 未找到 EAN「{keyword}」\n\n"
                 "请确认EAN码是否正确，或尝试输入型号关键词"
             )
-        # ✅ 修复3：使用新的 set_session 方法
-        set_session(open_id, products)
+        user_sessions[open_id] = products
         return format_product_detail(products[0])
 
     # 型号关键词搜索
@@ -242,51 +207,23 @@ def handle_message(open_id, keyword):
         )
 
     if len(products) == 1:
-        # ✅ 修复3：使用新的 set_session 方法
-        set_session(open_id, products)
+        user_sessions[open_id] = products
         return format_product_detail(products[0])
 
-    set_session(open_id, products[:10])
+    user_sessions[open_id] = products[:10]
     return format_search_list(keyword, products)
-
-
-def process_event(open_id, keyword, token, is_group, chat_id):
-    """
-    ✅ 修复1：将业务逻辑封装到独立函数，在后台线程中执行
-    主线程立即返回 200，此函数异步处理查询和回复
-    """
-    try:
-        reply = handle_message(open_id, keyword)
-        if reply:
-            send_reply(
-                open_id=open_id,
-                text=reply,
-                token=token,
-                reply_in_group=is_group,
-                chat_id=chat_id
-            )
-    except Exception:
-        # ✅ 修复4：异常时不再额外发送错误消息，避免重试时产生多余提示
-        pass
 
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
+        body = {}
         try:
             length = int(self.headers.get('Content-Length', 0))
             body = json.loads(self.rfile.read(length))
 
-            # URL verification（立即响应，无需异步）
+            # URL verification
             if body.get('type') == 'url_verification':
                 self._respond(200, {'challenge': body.get('challenge')})
-                return
-
-            # ✅ 修复2：提取 event_id 并检查是否已处理
-            header = body.get('header', {})
-            event_id = header.get('event_id', '')
-            if is_event_processed(event_id):
-                # 重复事件，直接返回 200，不处理
-                self._respond(200, {'code': 0})
                 return
 
             event = body.get('event', {})
@@ -303,44 +240,62 @@ class handler(BaseHTTPRequestHandler):
 
             content_str = msg.get('content', '{}')
             content_obj = json.loads(content_str)
-            mentions = msg.get('mentions', [])
+            mentions = event.get('message', {}).get('mentions', [])
             open_id = sender.get('sender_id', {}).get('open_id', '')
             chat_id = msg.get('chat_id', '')
             is_group = (chat_type == 'group')
 
             if is_group:
+                # 群组消息：必须 @机器人 才响应
                 text_raw = content_obj.get('text', '')
+                # 检查是否包含 @mention
                 if '@_user_' not in text_raw:
                     self._respond(200, {'code': 0})
                     return
                 keyword = extract_keyword_from_group_msg(content_obj, mentions)
             else:
+                # 私聊：直接取文本
                 keyword = content_obj.get('text', '').strip()
 
             if not keyword or not open_id:
                 self._respond(200, {'code': 0})
                 return
 
-            # ✅ 修复1：先获取 token，然后立即返回 200
             token = get_lark_token()
+            reply = handle_message(open_id, keyword)
 
-            # ✅ 修复1：立即返回 200，Lark 不会重试
-            self._respond(200, {'code': 0})
+            if reply:
+                send_reply(
+                    open_id=open_id,
+                    text=reply,
+                    token=token,
+                    reply_in_group=is_group,
+                    chat_id=chat_id
+                )
 
-            # ✅ 修复1：在后台线程中异步处理查询和回复
-            t = threading.Thread(
-                target=process_event,
-                args=(open_id, keyword, token, is_group, chat_id),
-                daemon=True
-            )
-            t.start()
+        except Exception as e:
+            try:
+                token = get_lark_token()
+                event = body.get('event', {})
+                msg = event.get('message', {})
+                open_id = event.get('sender', {}).get('sender_id', {}).get('open_id', '')
+                chat_type = msg.get('chat_type', '')
+                chat_id = msg.get('chat_id', '')
+                if open_id:
+                    send_reply(
+                        open_id=open_id,
+                        text="⚠️ 查询出错，请稍后重试",
+                        token=token,
+                        reply_in_group=(chat_type == 'group'),
+                        chat_id=chat_id
+                    )
+            except Exception:
+                pass
 
-        except Exception:
-            # 解析失败等异常，直接返回 200
-            self._respond(200, {'code': 0})
+        self._respond(200, {'code': 0})
 
     def do_GET(self):
-        self._respond(200, {'status': 'AERONEX Lark Bot is running', 'version': '1.5.0'})
+        self._respond(200, {'status': 'AERONEX Lark Bot is running', 'version': '1.4.0'})
 
     def _respond(self, status, data):
         self.send_response(status)
