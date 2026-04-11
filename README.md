@@ -34,9 +34,10 @@
 
 在群组中需要 **@ 机器人** 后输入关键词：
 
-Copy
-@AERONEX Inventory Sync Matrice 400 @AERONEX Inventory Sync 6937224120570
-
+```
+@AERONEX Inventory Sync Matrice 400
+@AERONEX Inventory Sync 6937224120570
+```
 
 ---
 
@@ -46,33 +47,42 @@ Copy
 
 **步骤 1**：发送型号关键词
 
+```
 Matrice 4T
-
+```
 
 **机器人回复**：
 
+```
 🔍 「Matrice 4T」找到 6 个相关产品
 
 📋 请输入编号查看库存详情：
+1. DJI Matrice 4TD（DJI RC Plus 2 Enterprise Overseas Edition）
+2. DJI Matrice 4T (Demo Unit)
+3. DJI Matrice 4T (Universal Edition)
+4. DJI Matrice 4TD (Demo Unit)
+5. DJI Matrice 4TD (Overseas Edition)
+6. DJI Matrice 4T (EU)
 
-DJI Matrice 4TD（DJI RC Plus 2 Enterprise Overseas Edition）
-DJI Matrice 4T (Demo Unit)
-DJI Matrice 4T (Universal Edition)
-DJI Matrice 4TD (Demo Unit)
-DJI Matrice 4TD (Overseas Edition)
-DJI Matrice 4T (EU)
-💡 输入数字 1-6 查看详情
-
+💡 输入数字 1-6 查看详情（有效期 5 分钟）
+```
 
 **步骤 2**：输入编号
 
+```
 3
-
+```
 
 **机器人回复**：
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 📦 DJI Matrice 4T (Universal Edition) EAN: 6941565994172 🇦🇪 Dubai: ✅ 259 件 🇸🇦 Saudi: ✅ 8 件 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📦 DJI Matrice 4T (Universal Edition)
+EAN: 6941565994172
+🇦🇪 Dubai: ✅ 259 件
+🇸🇦 Saudi: ✅ 8 件
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
 
 ---
 
@@ -80,13 +90,20 @@ DJI Matrice 4T (EU)
 
 直接发送 EAN 码，机器人立即返回该产品库存：
 
+```
 6941565994172
-
+```
 
 **机器人回复**：
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 📦 DJI Matrice 4T (Universal Edition) EAN: 6941565994172 🇦🇪 Dubai: ✅ 259 件 🇸🇦 Saudi: ✅ 8 件 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📦 DJI Matrice 4T (Universal Edition)
+EAN: 6941565994172
+🇦🇪 Dubai: ✅ 259 件
+🇸🇦 Saudi: ✅ 8 件
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
 
 ---
 
@@ -112,9 +129,9 @@ DJI Matrice 4T (EU)
 
 ## 数据更新频率 / Data Sync Schedule
 
-库存数据每 **2 小时**自动从 Lark 表格同步一次（全天候运行）。
+库存数据每 **30 分钟**自动从 Lark 表格同步一次（全天候运行）。
 
-Data is automatically synced from Lark Sheets every **2 hours** (runs 24/7).
+Data is automatically synced from Lark Sheets every **30 minutes** (runs 24/7).
 
 如需立即更新，请联系管理员手动触发同步。
 
@@ -133,27 +150,27 @@ For immediate updates, please contact the admin to trigger a manual sync.
 
 ## 常见问题 / FAQ
 
-**Q: 搜索没有结果怎么办？**
+**Q: 搜索没有结果怎么办？**  
 A: 请尝试缩短关键词，如输入 `Matrice` 而非 `DJI Matrice 400 General`。
 
-**Q: What if no results are found?**
+**Q: What if no results are found?**  
 A: Try shorter keywords, e.g., `Matrice` instead of `DJI Matrice 400 General`.
 
 ---
 
-**Q: 数据和实际库存不符怎么办？**
-A: 库存数据每2小时同步一次，如有差异请以 Lark 表格为准，或联系管理员手动触发同步。
+**Q: 数据和实际库存不符怎么办？**  
+A: 库存数据每30分钟同步一次，如有差异请以 Lark 表格为准，或联系管理员手动触发同步。
 
-**Q: Data doesn't match actual inventory?**
-A: Data syncs once every 2 hours. If discrepancies exist, refer to the Lark Sheet or ask admin to trigger a manual sync.
+**Q: Data doesn't match actual inventory?**  
+A: Data syncs every 30 minutes. If discrepancies exist, refer to the Lark Sheet or ask admin to trigger a manual sync.
 
 ---
 
-**Q: 编号选择后没有反应？**
-A: 查询会话有效期为当次会话，重新搜索关键词后再选择编号即可。
+**Q: 编号选择后显示「查询已过期」？**  
+A: 查询会话有效期为 **5 分钟**，超时后需重新搜索关键词，再输入编号选择。
 
-**Q: No response after entering a number?**
-A: The session expires after each query. Search again and then select a number.
+**Q: Seeing "session expired" after entering a number?**  
+A: The query session is valid for **5 minutes**. Please search again and then select a number.
 
 ---
 
