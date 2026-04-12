@@ -2,9 +2,9 @@
 
 ## 简介 / Introduction
 
-**中文**：AERONEX 库存查询助手是一款 Lark 智能机器人，支持通过私聊或群组 @ 的方式，快速查询迪拜和沙特两个仓库的实时库存数量。
+**中文**：AERONEX 库存查询助手是一款 Lark 智能机器人，支持通过私聊或群组 @ 的方式，快速查询迪拜和沙特两个仓库的实时库存数量，并支持一键导出完整库存报表（CSV 格式）。
 
-**English**: AERONEX Inventory Query Assistant is a Lark bot that allows you to instantly check real-time stock availability across Dubai and Saudi Arabia warehouses, via private chat or group mention.
+**English**: AERONEX Inventory Query Assistant is a Lark bot that allows you to instantly check real-time stock availability across Dubai and Saudi Arabia warehouses, via private chat or group mention. It also supports one-click export of the full inventory report in CSV format.
 
 ---
 
@@ -19,6 +19,7 @@
 | 按型号搜索 | `Matrice 400` |
 | 按EAN码查询 | `6937224120570` |
 | 选择编号查看详情 | `3` |
+| 导出完整库存报表 | `导出` 或 `export` |
 
 **English**:
 
@@ -27,6 +28,7 @@
 | Search by model | `Matrice 400` |
 | Search by EAN code | `6937224120570` |
 | Select number for details | `3` |
+| Export full inventory report | `导出` or `export` |
 
 ---
 
@@ -83,6 +85,48 @@ EAN: 6941565994172
 🇸🇦 Saudi: ✅ 8 件
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
+
+---
+
+### 导出库存报表 / Export Inventory Report
+
+发送以下任意关键词即可触发导出：
+
+| 中文触发词 | 英文触发词 |
+|-----------|----------|
+| `导出` | `export` |
+| `导出库存` | `export inventory` |
+| `导出清单` | `export list` |
+| `导出报表` | `export report` |
+
+**机器人回复流程**：
+
+```
+⏳ 正在生成库存报表，请稍候...
+```
+
+稍后收到：
+
+```
+✅ 库存报表已生成
+📦 共 182 个 SKU
+🗓 数据时间：2026-04-12 04:23 UTC
+```
+
+随后自动发送 **📎 CSV 文件**，点击即可下载，用 Excel 直接打开（中文不乱码）。
+
+**文件内容说明**：
+
+| 列名 | 说明 |
+|------|------|
+| EAN | 产品条码 |
+| 产品型号/Model | 产品名称 |
+| 迪拜库存/Dubai | 迪拜仓可用数量 |
+| 沙特库存/Saudi | 沙特仓可用数量 |
+| 合计/Total | 两仓合计数量 |
+| 同步时间/Sync Time | 数据同步时间（UTC） |
+
+> ⚠️ 导出功能仅支持**私聊**触发，群组暂不支持。
 
 ---
 
@@ -171,6 +215,14 @@ A: 查询会话有效期为 **5 分钟**，超时后需重新搜索关键词，�
 
 **Q: Seeing "session expired" after entering a number?**  
 A: The query session is valid for **5 minutes**. Please search again and then select a number.
+
+---
+
+**Q: 发送「导出」后没有收到文件？**  
+A: 请等待约 5-10 秒，文件较大时生成需要一点时间。如果收到错误提示，请联系 IT 管理员检查权限配置。
+
+**Q: No file received after sending "export"?**  
+A: Please wait 5–10 seconds as generation may take a moment. If you receive an error message, contact the IT admin to check permissions.
 
 ---
 
