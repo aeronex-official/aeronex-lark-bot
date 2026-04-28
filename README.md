@@ -2,9 +2,9 @@
 
 ## 简介 / Introduction
 
-**中文**：AERONEX 库存查询助手是一款 Lark 智能机器人，支持通过私聊或群组 @ 的方式，快速查询迪拜和沙特两个仓库的实时库存数量，并支持一键导出完整库存报表（CSV 格式）。
+**中文**：AERONEX 库存查询助手是一款 Lark 智能机器人，支持通过私聊或群组 @ 的方式，快速查询迪拜、沙特和香港三个仓库的实时库存数量，并支持一键导出完整库存报表（CSV 格式，含三仓数据）。
 
-**English**: AERONEX Inventory Query Assistant is a Lark bot that allows you to instantly check real-time stock availability across Dubai and Saudi Arabia warehouses, via private chat or group mention. It also supports one-click export of the full inventory report in CSV format.
+**English**: AERONEX Inventory Query Assistant is a Lark bot that allows you to instantly check real-time stock availability across Dubai, Saudi Arabia, and Hong Kong warehouses, via private chat or group mention. It also supports one-click export of the full inventory report in CSV format (including all three warehouses).
 
 ---
 
@@ -81,8 +81,9 @@ Matrice 4T
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📦 DJI Matrice 4T (Universal Edition)
 EAN: 6941565994172
-🇦🇪 Dubai: ✅ 259 件
-🇸🇦 Saudi: ✅ 8 件
+🇦🇪 Dubai:  ✅ 259 件
+🇸🇦 Saudi:  ✅ 8 件
+🇭🇰 HK:     ✅ 12 件
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -110,7 +111,7 @@ EAN: 6941565994172
 ```
 ✅ 库存报表已生成
 📦 共 182 个 SKU
-🗓 数据时间：2026-04-12 04:23 UTC
+🗓 数据时间：2026-04-28 10:30 GST
 ```
 
 随后自动发送 **📎 CSV 文件**，点击即可下载，用 Excel 直接打开（中文不乱码）。
@@ -123,8 +124,9 @@ EAN: 6941565994172
 | 产品型号/Model | 产品名称 |
 | 迪拜库存/Dubai | 迪拜仓可用数量 |
 | 沙特库存/Saudi | 沙特仓可用数量 |
-| 合计/Total | 两仓合计数量 |
-| 同步时间/Sync Time | 数据同步时间（UTC） |
+| 香港库存/HK | 香港仓可用数量 |
+| 合计/Total | 三仓合计数量 |
+| 同步时间/Sync Time | 数据同步时间（迪拜时间 GST） |
 
 > ⚠️ 导出功能仅支持**私聊**触发，群组暂不支持。
 
@@ -144,8 +146,9 @@ EAN: 6941565994172
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📦 DJI Matrice 4T (Universal Edition)
 EAN: 6941565994172
-🇦🇪 Dubai: ✅ 259 件
-🇸🇦 Saudi: ✅ 8 件
+🇦🇪 Dubai:  ✅ 259 件
+🇸🇦 Saudi:  ✅ 8 件
+🇭🇰 HK:     — 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -189,6 +192,7 @@ For immediate updates, please contact the admin to trigger a manual sync.
 |------|------|
 | 🇦🇪 Dubai | 迪拜仓库 |
 | 🇸🇦 Saudi | 沙特仓库 |
+| 🇭🇰 HK | 香港仓库（2026-04-28 新增） |
 
 ---
 
