@@ -1,12 +1,22 @@
 from http.server import BaseHTTPRequestHandler
 import json, requests, os, re
 
+# ============================================================
+# AERONEX Lark Bot - Vercel Python 版（旧版，已归档）
+# Version: 1.4.0
+# 状态：⚠️ 已废弃，不再维护
+#       当前 Lark Bot 逻辑已迁移至 Cloudflare Worker
+#       新版代码：github_repo/index.js（aeronex-cloudfare-workers）
+# ============================================================
+
+# 旧版 Genspark API 地址（已弃用）
 WEB_API_BASE_URL = os.environ.get('WEB_API_BASE_URL', '').rstrip('/')
 LARK_APP_ID = os.environ.get('LARK_APP_ID', '')
 LARK_APP_SECRET = os.environ.get('LARK_APP_SECRET', '')
 LARK_BASE_URL = 'https://open.larksuite.com'
 
 # 临时存储用户查询上下文 {open_id: [product_list]}
+# 注意：Vercel 无状态环境，此字典每次冷启动会重置，无法跨请求保持
 user_sessions = {}
 
 def get_lark_token():
@@ -18,9 +28,11 @@ def get_lark_token():
     return resp.json().get('tenant_access_token', '')
 
 def is_ean(keyword):
+    # 判断是否为 8-14 位纯数字（EAN 条码格式）
     return bool(re.match(r'^\d{8,14}$', keyword.strip()))
 
 def fetch_all_inventory():
+    # 从旧版 Genspark API 分页拉取所有库存数据（已弃用）
     all_rows = []
     page = 1
     while True:
@@ -40,6 +52,7 @@ def fetch_all_inventory():
     return all_rows
 
 def merge_products(rows):
+    # 将迪拜/沙特两条记录按 EAN 合并为一条产品记录
     products = {}
     for row in rows:
         ean = str(row.get('ean', '')).strip()
@@ -50,16 +63,20 @@ def merge_products(rows):
                 'ean': ean,
                 'model': row.get('model', ''),
                 'dubai_qty': None,
-                'saudi_qty': None
+                'saudi_qty': None,
+                'hk_qty': None,   # v3.0 新增香港仓
             }
-        warehouse = row.get('warehouse', '')
+        warehouse = row.get('warehouse', '').lower()  # v3.0: 小写统一处理
         qty = row.get('available_qty', 0)
         if qty is None:
             qty = 0
-        if 'Dubai' in warehouse:
+        # 兼容新格式 'dubai'/'saudi'/'hk' 和旧格式 'Dubai Inventory'/'Saudi Inventory'
+        if 'dubai' in warehouse:
             products[ean]['dubai_qty'] = qty
-        elif 'Saudi' in warehouse:
+        elif 'saudi' in warehouse:
             products[ean]['saudi_qty'] = qty
+        elif 'hk' in warehouse:
+            products[ean]['hk_qty'] = qty
     return list(products.values())
 
 def search_by_ean(keyword):
@@ -94,6 +111,7 @@ def search_by_model(keyword):
     return products
 
 def format_qty(qty):
+    # 格式化库存数量显示：正数显示绿色✅，零显示❌，负数显示⚠️
     if qty is None:
         return "—"
     if qty > 0:
@@ -110,6 +128,7 @@ def format_product_detail(p):
         f"EAN: {p['ean']}",
         f"🇦🇪 Dubai:  {format_qty(p['dubai_qty'])}",
         f"🇸🇦 Saudi:  {format_qty(p['saudi_qty'])}",
+        f"🇭🇰 HK:     {format_qty(p.get('hk_qty'))}",  # v3.0 新增香港仓
         "━" * 28
     ]
     return "\n".join(lines)
@@ -174,7 +193,7 @@ def handle_message(open_id, keyword):
     if not keyword:
         return None
 
-    # 判断是否为选择编号
+    # 判断是否为选择编号（1-10 之间的数字）
     if re.match(r'^\d{1,2}$', keyword):
         num = int(keyword)
         session = user_sessions.get(open_id, [])
@@ -185,7 +204,7 @@ def handle_message(open_id, keyword):
         else:
             return "⚠️ 查询已过期，请重新输入产品名称或EAN码"
 
-    # 判断是否为EAN码
+    # 判断是否为EAN码（8-14位纯数字）
     if is_ean(keyword):
         products = search_by_ean(keyword)
         if not products:
@@ -196,7 +215,7 @@ def handle_message(open_id, keyword):
         user_sessions[open_id] = products
         return format_product_detail(products[0])
 
-    # 型号关键词搜索
+    # 型号关键词模糊搜索
     products = search_by_model(keyword)
     if not products:
         return (
@@ -221,7 +240,7 @@ class handler(BaseHTTPRequestHandler):
             length = int(self.headers.get('Content-Length', 0))
             body = json.loads(self.rfile.read(length))
 
-            # URL verification
+            # Lark URL verification 握手
             if body.get('type') == 'url_verification':
                 self._respond(200, {'challenge': body.get('challenge')})
                 return
@@ -233,7 +252,7 @@ class handler(BaseHTTPRequestHandler):
             chat_type = msg.get('chat_type', '')
             msg_type = msg.get('message_type', '')
 
-            # 只处理私聊和群组的文本消息
+            # 只处理私聊（p2p）和群组（group）的文本消息
             if chat_type not in ('p2p', 'group') or msg_type != 'text':
                 self._respond(200, {'code': 0})
                 return
@@ -246,15 +265,14 @@ class handler(BaseHTTPRequestHandler):
             is_group = (chat_type == 'group')
 
             if is_group:
-                # 群组消息：必须 @机器人 才响应
+                # 群组消息：必须 @机器人 才响应，否则忽略
                 text_raw = content_obj.get('text', '')
-                # 检查是否包含 @mention
                 if '@_user_' not in text_raw:
                     self._respond(200, {'code': 0})
                     return
                 keyword = extract_keyword_from_group_msg(content_obj, mentions)
             else:
-                # 私聊：直接取文本
+                # 私聊：直接取文本内容
                 keyword = content_obj.get('text', '').strip()
 
             if not keyword or not open_id:
@@ -274,6 +292,7 @@ class handler(BaseHTTPRequestHandler):
                 )
 
         except Exception as e:
+            # 异常时尝试回复用户错误提示
             try:
                 token = get_lark_token()
                 event = body.get('event', {})
@@ -304,4 +323,5 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(data).encode())
 
     def log_message(self, *args):
+        # 禁止默认日志输出，避免 Vercel 日志噪音
         pass
